@@ -1,0 +1,28 @@
+{
+  "name": "Burst of DNS queries with long encoded subdomains to one unfamiliar domain",
+  "description": "Lab rule for the CTIA dns-tunneling-001 scenario. One internal host asked one unfamiliar registered domain 50 times inside ten minutes, every query name carrying a 44-character random label, every gap exactly 12 seconds, and the last one carrying a 96-character label. That combination is DNS tunnelling and C2 beaconing, and a query rule is the honest way to teach it: the number of alerts is the number of queries, so the count the rule reports and the count an analyst finds by hand have to be the same number. Scoped to the one domain the lab ships, on purpose, so the result is unambiguous and it cannot fire on ordinary traffic. Left without a threshold so every one of the burst's records arrives as its own alert, which is what a real per-record rule does. The time window is deliberately long because this lab ships historical data - that is a lab-only concession, not a production setting; a real deployment would use a short window and alert on the shape of the burst (one host, one domain, fixed interval, high name entropy) rather than on a single domain name.",
+  "type": "query",
+  "risk_score": 99,
+  "severity": "critical",
+  "tags": [
+    "ctia-lab",
+    "dns",
+    "dns-tunnelling",
+    "c2-beaconing",
+    "exfiltration",
+    "detection-engineering"
+  ],
+  "enabled": true,
+  "interval": "1m",
+  "from": "now-365d",
+  "to": "now",
+  "index": [
+    "dns-*"
+  ],
+  "timeField": "@timestamp",
+  "query": "dns.question.registered_domain: \"exfil-c2.example\"",
+  "language": "kuery",
+  "max_signals": 100,
+  "actions": [],
+  "notify_when": "onActiveAlert"
+}
