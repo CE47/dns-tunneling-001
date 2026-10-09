@@ -711,7 +711,14 @@ if not "%CURLCODE%"=="200" (
   call :fail "Kibana refused to create the data view !DVPAT!, HTTP !CURLCODE!" "The log data is still loaded. Check  docker logs %SCEN%-kibana  and run this file again."
   exit /b 1
 )
-call :docurl -s -o "%WORK%\dv-find.json" %KBAUTH% "%KBURL%/api/saved_objects/_find?type=index-pattern^&search_fields=title^&search=!DVPAT!^&fields=title^&per_page=50"
+rem  The & separators in the URL below are written bare, with no caret, and the
+rem  URL is never parked in a variable.  CALL makes cmd.exe parse this line a
+rem  second time, and on that second pass a caret is itself doubled: ^& arrives
+rem  at curl.exe as ^^&, which is not a separator and not valid syntax inside a
+rem  query value.  A bare & typed into a quoted argument in the command text
+rem  survives both parses untouched, which is why it is correct here.  Do not
+rem  "tidy" this URL into a variable - see the same note in :esdocount.
+call :docurl -s -o "%WORK%\dv-find.json" %KBAUTH% "%KBURL%/api/saved_objects/_find?type=index-pattern&search_fields=title&search=!DVPAT!&fields=title&per_page=50"
 findstr /c:"!DVPAT!" "%WORK%\dv-find.json" >nul 2>&1
 if errorlevel 1 (
   echo  ERROR: the data view was created but the pattern "!DVPAT!" was not stored.
@@ -862,16 +869,30 @@ rem     %~3 is an optional query body.  Without it this is a plain count of
 rem     everything in the index; with one it counts only what matches, which is
 rem     how :mkrule asks "is this rule already installed" without needing a
 rem     response it would then have to take apart in batch.
+rem
+rem     The _count URL below is written out literally on both CALL lines, with
+rem     bare & separators, and is deliberately NOT held in a variable.  CALL
+rem     makes cmd.exe parse its command line a second time.  On that second
+rem     pass a caret is doubled, so ^& reaches curl.exe as ^^& and
+rem     allow_no_indices arrives as the value "true^^", which Elasticsearch
+rem     rejects with HTTP 400 illegal_argument_exception: Could not convert
+rem     [allow_no_indices] to boolean.  A bare & inside a quoted argument in
+rem     the command text survives both parses, and bash has no second parse at
+rem     all, which is why setup-lab.sh sends the same URL and works.  One
+rem     query parameter would survive a variable; this URL has two, so it has
+rem     to live in the command line.
+rem
+rem     Verified against Elasticsearch 9.1:
+rem       ^^ -> HTTP 400    ^ -> HTTP 400    & literal -> HTTP 200 {"count":N}
 :esdocount
 set "EDIDX=%~1"
 set "EDVAR=%~2"
 set "EDQ=%~3"
-set "EDCNTURL=%ESURL%/%EDIDX%/_count?allow_no_indices=true^&filter_path=count"
 call :docurl -s -o nul -X POST %ESAUTH% "%ESURL%/%EDIDX%/_refresh"
 if defined EDQ (
-  call :docurl -s -o "%WORK%\cnt.json" %ESAUTH% -X POST -H "Content-Type: application/json" --data-binary "@%EDQ%" "%EDCNTURL%"
+  call :docurl -s -o "%WORK%\cnt.json" %ESAUTH% -X POST -H "Content-Type: application/json" --data-binary "@%EDQ%" "%ESURL%/%EDIDX%/_count?allow_no_indices=true&filter_path=count"
 ) else (
-  call :docurl -s -o "%WORK%\cnt.json" %ESAUTH% "%EDCNTURL%"
+  call :docurl -s -o "%WORK%\cnt.json" %ESAUTH% "%ESURL%/%EDIDX%/_count?allow_no_indices=true&filter_path=count"
 )
 if not "%CURLCODE%"=="200" (
   call :fail "could not read the document count of %EDIDX%, HTTP %CURLCODE%" "Nothing was changed."
